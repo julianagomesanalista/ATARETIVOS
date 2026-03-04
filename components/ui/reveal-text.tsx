@@ -55,12 +55,13 @@ export function RevealText({
     <div className="flex items-center justify-center relative">
       <div className="flex">
         {text.split("").map((letter, index) => {
-          const imgConfig = letterImages[index % letterImages.length];
-          const imgSrc = typeof imgConfig === 'string' ? imgConfig : imgConfig.src;
-          const bgSize = typeof imgConfig === 'object' && imgConfig.backgroundSize ? imgConfig.backgroundSize : "contain";
-          const bgPos = typeof imgConfig === 'object' && imgConfig.backgroundPosition ? imgConfig.backgroundPosition : "center center";
-          const useBlur = typeof imgConfig === 'object' && imgConfig.useBlur;
-          const aspectRatio = typeof imgConfig === 'object' && imgConfig.aspectRatio ? imgConfig.aspectRatio : undefined;
+          const hasImages = letterImages && letterImages.length > 0;
+          const imgConfig = hasImages ? letterImages[index % letterImages.length] : undefined;
+          const imgSrc = imgConfig ? (typeof imgConfig === 'string' ? imgConfig : imgConfig.src) : "";
+          const bgSize = imgConfig && typeof imgConfig === 'object' && imgConfig.backgroundSize ? imgConfig.backgroundSize : "contain";
+          const bgPos = imgConfig && typeof imgConfig === 'object' && imgConfig.backgroundPosition ? imgConfig.backgroundPosition : "center center";
+          const useBlur = imgConfig && typeof imgConfig === 'object' && imgConfig.useBlur;
+          const aspectRatio = imgConfig && typeof imgConfig === 'object' && imgConfig.aspectRatio ? imgConfig.aspectRatio : undefined;
 
           return (
             <motion.span

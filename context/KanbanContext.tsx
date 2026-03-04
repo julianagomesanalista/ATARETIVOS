@@ -1,19 +1,11 @@
 "use client";
 
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  useMemo,
-  ReactNode,
-} from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, ReactNode } from 'react';
 import toast from 'react-hot-toast';
-import { Task, Status, Comment, ChatMessage, KanbanColumn } from '@/types';
-import { mockTasks, mockChatMessages, findUser } from '@/data/mockData';
+import { Task, Status, Comment, ChatMessage, KanbanColumn, ChatTabState } from '@/types';
 import { calculateDueDate, isOverdue } from '@/utils/sla';
 import { useAuth } from './AuthContext';
+import { createClient } from '@/utils/supabase/client';
 
 interface KanbanContextType {
   tasks: Task[];
@@ -21,19 +13,23 @@ interface KanbanContextType {
   chatMessages: ChatMessage[];
   selectedTask: Task | null;
   showCreateModal: boolean;
-  showChat: boolean;
+  chatTabs: ChatTabState[];
   overdueTasks: Task[];
   setSelectedTask: (task: Task | null) => void;
   setShowCreateModal: (v: boolean) => void;
-  setShowChat: (v: boolean) => void;
+  openChatTab: (tabId: string, type: 'global' | 'dm', chatName: string) => void;
+  closeChatTab: (tabId: string) => void;
+  minimizeChatTab: (tabId: string, minimized: boolean) => void;
+  setChatDraft: (tabId: string, draft: string) => void;
+  setChatMention: (tabId: string, mention?: { taskId: string; title: string }) => void;
   moveTask: (taskId: string, newStatus: Status) => void;
-  createTask: (data: Omit<Task, 'id' | 'created_at' | 'due_date' | 'comments' | 'attachments'>) => void;
+  createTask: (data: Omit<Task, 'id' | 'created_at' | 'due_date' | 'comments' | 'attachments'> & { created_at?: string; due_date?: string }) => void;
   updateTask: (taskId: string, updates: Partial<Task>) => void;
   deleteTask: (taskId: string) => void;
   addComment: (taskId: string, content: string) => void;
   editComment: (commentId: string, content: string) => void;
   deleteComment: (commentId: string) => void;
-  sendChatMessage: (message: string) => void;
+  sendChatMessage: (message: string, receiverId?: string) => void;
   getTaskById: (id: string) => Task | undefined;
 }
 
@@ -46,15 +42,92 @@ const COLUMN_DEFS: { id: Status; title: string; headerColor: string }[] = [
 ];
 
 export function KanbanProvider({ children }: { children: ReactNode }) {
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(mockChatMessages);
+  const supabase = createClient();
+  const { currentUser, availableUsers } = useAuth();
+
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showChat, setShowChat] = useState(false);
+  const [chatTabs, setChatTabs] = useState<ChatTabState[]>([
+    { id: 'global', type: 'global', chatName: 'Chat da Equipe', draft: '', isOpen: false, isMinimized: false }
+  ]);
 
-  const { currentUser } = useAuth();
+  // Busca inicial dos dados
+  const fetchData = useCallback(async () => {
+    // Buscar tarefas
+    const { data: tasksData } = await supabase
+      .from('tasks')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-  // Build column view from tasks
+    // Buscar comentarios
+    const { data: commentsData } = await supabase
+      .from('comments')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    // Buscar mensagens
+    const { data: messagesData } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .order('timestamp', { ascending: true });
+
+    if (tasksData) {
+      // Montar tasks com creator e comments com user
+      const builtTasks = tasksData.map(t => {
+        const creator = availableUsers.find(u => u.id === t.creator_id);
+        const taskComments = (commentsData || [])
+          .filter(c => c.task_id === t.id)
+          .map(c => ({
+            ...c,
+            user: availableUsers.find(u => u.id === c.user_id)
+          }));
+        
+        return {
+          ...t,
+          creator,
+          comments: taskComments,
+          attachments: [] // Simplificando por enquanto
+        };
+      });
+      setTasks(builtTasks as Task[]);
+    }
+
+    if (messagesData) {
+      const builtMessages: ChatMessage[] = messagesData.map(m => ({
+        id: m.id,
+        sender_id: m.sender_id,
+        receiver_id: m.receiver_id,
+        message: m.content,
+        created_at: m.timestamp,
+        sender: availableUsers.find(u => u.id === m.sender_id)
+      }));
+      setChatMessages(builtMessages);
+    }
+  }, [supabase, availableUsers]);
+
+  useEffect(() => {
+    // Só buscar tarefas e mensagens quando a lista de usuários estiver pronta
+    if (availableUsers.length > 0) {
+      fetchData();
+    }
+  }, [availableUsers, fetchData]);
+
+  // Tempo real - Ouvindo mudanças no Supabase
+  useEffect(() => {
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages' }, fetchData)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, fetchData]);
+
   const columns: KanbanColumn[] = useMemo(
     () =>
       COLUMN_DEFS.map((def) => ({
@@ -71,109 +144,163 @@ export function KanbanProvider({ children }: { children: ReactNode }) {
     [tasks]
   );
 
-  const moveTask = useCallback((taskId: string, newStatus: Status) => {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
-    );
+  const openChatTab = useCallback((tabId: string, type: 'global' | 'dm', chatName: string) => {
+    setChatTabs((prev) => {
+      const existing = prev.find((t) => t.id === tabId);
+      if (existing) {
+        return prev.map((t) => (t.id === tabId ? { ...t, isOpen: true, isMinimized: false } : t));
+      }
+      return [...prev, { id: tabId, type, chatName, draft: '', isOpen: true, isMinimized: false }];
+    });
   }, []);
 
-  const createTask = useCallback(
-    (data: Omit<Task, 'id' | 'created_at' | 'due_date' | 'comments' | 'attachments'>) => {
-      const now = new Date().toISOString();
-      const due = calculateDueDate(now, data.complexity).toISOString();
-      const newTask: Task = {
-        ...data,
-        id: `task-${uuidv4()}`,
+  const closeChatTab = useCallback((tabId: string) => {
+    setChatTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, isOpen: false } : t)));
+  }, []);
+
+  const minimizeChatTab = useCallback((tabId: string, isMinimized: boolean) => {
+    setChatTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, isMinimized } : t)));
+  }, []);
+
+  const setChatDraft = useCallback((tabId: string, draft: string) => {
+    setChatTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, draft } : t)));
+  }, []);
+
+  const setChatMention = useCallback((tabId: string, mention?: { taskId: string; title: string }) => {
+    setChatTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, draftMention: mention } : t)));
+  }, []);
+
+  const moveTask = useCallback(async (taskId: string, newStatus: Status) => {
+    // Atualização Otimista
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)));
+    
+    const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', taskId);
+    if (error) {
+      toast.error('Erro ao mover tarefa.');
+      fetchData(); // reverter
+    }
+  }, [supabase, fetchData]);
+
+  const createTask = useCallback(async (data: Omit<Task, 'id' | 'created_at' | 'due_date' | 'comments' | 'attachments'> & { created_at?: string; due_date?: string }) => {
+      if (!currentUser) return;
+      const now = data.created_at ? new Date(data.created_at).toISOString() : new Date().toISOString();
+      const due = data.due_date ? new Date(data.due_date).toISOString() : calculateDueDate(now, data.complexity).toISOString();
+      
+      const { error } = await supabase.from('tasks').insert({
+        title: data.title,
+        description: data.description,
+        status: data.status,
+        complexity: data.complexity,
+        company_name: data.company_name,
         created_at: now,
         due_date: due,
-        comments: [],
-        attachments: [],
-        creator: currentUser ?? undefined,
-      };
-      setTasks((prev) => [newTask, ...prev]);
-      toast.success('Tarefa criada com sucesso!');
+        tags: data.tags,
+        creator_id: currentUser.id
+      });
+      
+      if (error) {
+        console.error("Erro no Supabase ao criar tarefa:", error);
+        toast.error('Erro ao criar tarefa');
+      } else {
+        toast.success('Tarefa criada com sucesso!');
+        fetchData();
+      }
     },
-    [currentUser]
+    [currentUser, supabase, fetchData]
   );
 
-  const updateTask = useCallback((taskId: string, updates: Partial<Task>) => {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
-    );
+  const updateTask = useCallback(async (taskId: string, updates: Partial<Task>) => {
+    // Atualização otimista
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t)));
     setSelectedTask((prev) => (prev?.id === taskId ? { ...prev, ...updates } : prev));
-  }, []);
+    
+    // Filtro para não enviar dados pesados aninhados pro update
+    const safeUpdates = { ...updates };
+    delete safeUpdates.id;
+    delete safeUpdates.comments;
+    delete safeUpdates.creator;
+    delete safeUpdates.attachments;
 
-  const deleteTask = useCallback((taskId: string) => {
+    const { error } = await supabase.from('tasks').update(safeUpdates).eq('id', taskId);
+    if (error) {
+      toast.error('Erro ao atualizar tarefa.');
+      fetchData(); // reverte em caso de erro
+    }
+  }, [supabase, fetchData]);
+
+  const deleteTask = useCallback(async (taskId: string) => {
+    // Otimista
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
     setSelectedTask(null);
-    toast.success('Tarefa excluída.');
-  }, []);
 
-  const addComment = useCallback(
-    (taskId: string, content: string) => {
+    const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+    if (error) {
+      toast.error('Erro ao excluir tarefa.');
+      fetchData();
+    } else {
+      toast.success('Tarefa excluída.');
+    }
+  }, [supabase, fetchData]);
+
+  const addComment = useCallback(async (taskId: string, content: string) => {
       if (!currentUser) return;
-      const comment: Comment = {
-        id: `comment-${uuidv4()}`,
+      const { error } = await supabase.from('comments').insert({
         task_id: taskId,
         user_id: currentUser.id,
-        user: currentUser,
-        content,
-        is_edited: false,
-        created_at: new Date().toISOString(),
-      };
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === taskId ? { ...t, comments: [...t.comments, comment] } : t
-        )
-      );
-      setSelectedTask((prev) =>
-        prev?.id === taskId ? { ...prev, comments: [...prev.comments, comment] } : prev
-      );
+        content: content
+      });
+      if (error) toast.error('Erro ao enviar comentário');
     },
-    [currentUser]
+    [currentUser, supabase]
   );
 
-  const editComment = useCallback((commentId: string, content: string) => {
-    const patchComments = (comments: Comment[]) =>
-      comments.map((c) =>
-        c.id === commentId ? { ...c, content, is_edited: true } : c
-      );
-    setTasks((prev) =>
-      prev.map((t) => ({ ...t, comments: patchComments(t.comments) }))
-    );
-    setSelectedTask((prev) =>
-      prev ? { ...prev, comments: patchComments(prev.comments) } : prev
-    );
-  }, []);
+  const editComment = useCallback(async (commentId: string, content: string) => {
+    const { error } = await supabase.from('comments').update({ content, is_edited: true }).eq('id', commentId);
+    if (error) toast.error('Erro ao editar comentário');
+  }, [supabase]);
 
-  const deleteComment = useCallback((commentId: string) => {
-    const filterComments = (comments: Comment[]) =>
-      comments.filter((c) => c.id !== commentId);
-    setTasks((prev) =>
-      prev.map((t) => ({ ...t, comments: filterComments(t.comments) }))
-    );
-    setSelectedTask((prev) =>
-      prev ? { ...prev, comments: filterComments(prev.comments) } : prev
-    );
-  }, []);
+  const deleteComment = useCallback(async (commentId: string) => {
+    const { error } = await supabase.from('comments').delete().eq('id', commentId);
+    if (error) toast.error('Erro ao apagar comentário');
+  }, [supabase]);
 
-  const sendChatMessage = useCallback(
-    (message: string) => {
+  const sendChatMessage = useCallback(async (message: string, receiverId?: string) => {
       if (!currentUser) return;
-      // Detect #task-id mentions
-      const mentionMatch = message.match(/#(task-[a-zA-Z0-9-]+)/);
-      const msg: ChatMessage = {
-        id: `msg-${uuidv4()}`,
+      
+      const tempId = `temp-${Date.now()}`;
+      const tempMsg: ChatMessage = {
+        id: tempId,
         sender_id: currentUser.id,
-        sender: currentUser,
+        receiver_id: receiverId,
         message,
-        task_mention_id: mentionMatch ? mentionMatch[1] : undefined,
         created_at: new Date().toISOString(),
+        sender: currentUser
       };
-      setChatMessages((prev) => [...prev, msg]);
+      
+      setChatMessages(prev => [...prev, tempMsg]);
+
+      const { error } = await supabase.from('chat_messages').insert({
+        sender_id: currentUser.id,
+        receiver_id: receiverId || null,
+        content: message
+      });
+      if (error) {
+        toast.error('Erro ao enviar mensagem');
+        fetchData(); // revert
+      }
     },
-    [currentUser]
+    [currentUser, supabase, fetchData]
   );
+
+  // Atualizar SelectedTask caso as tasks mudem no banco para refletir novos comentários ao vivo
+  useEffect(() => {
+    if (selectedTask) {
+      const freshTask = tasks.find(t => t.id === selectedTask.id);
+      if (freshTask && JSON.stringify(freshTask) !== JSON.stringify(selectedTask)) {
+        setSelectedTask(freshTask);
+      }
+    }
+  }, [tasks, selectedTask]);
 
   return (
     <KanbanContext.Provider
@@ -183,11 +310,15 @@ export function KanbanProvider({ children }: { children: ReactNode }) {
         chatMessages,
         selectedTask,
         showCreateModal,
-        showChat,
+        chatTabs,
         overdueTasks,
         setSelectedTask,
         setShowCreateModal,
-        setShowChat,
+        openChatTab,
+        closeChatTab,
+        minimizeChatTab,
+        setChatDraft,
+        setChatMention,
         moveTask,
         createTask,
         updateTask,

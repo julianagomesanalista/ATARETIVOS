@@ -10,6 +10,7 @@ export const mockUsers: User[] = [
     full_name: 'Felipe Silva',
     avatar_url: 'https://api.dicebear.com/9.x/avataaars/svg?seed=Felipe&backgroundColor=b6e3f4',
     role: 'admin',
+    area: 'Tecnologia',
     created_at: '2024-01-10T08:00:00Z',
   },
   {
@@ -19,6 +20,7 @@ export const mockUsers: User[] = [
     full_name: 'Maria Santos',
     avatar_url: 'https://api.dicebear.com/9.x/avataaars/svg?seed=Maria&backgroundColor=ffd5dc',
     role: 'master',
+    area: 'Marketing',
     created_at: '2024-01-12T09:00:00Z',
   },
   {
@@ -28,6 +30,7 @@ export const mockUsers: User[] = [
     full_name: 'João Oliveira',
     avatar_url: 'https://api.dicebear.com/9.x/avataaars/svg?seed=Joao&backgroundColor=c0aede',
     role: 'user',
+    area: 'Comercial',
     created_at: '2024-01-15T10:00:00Z',
   },
   {
@@ -37,6 +40,7 @@ export const mockUsers: User[] = [
     full_name: 'Ana Costa',
     avatar_url: 'https://api.dicebear.com/9.x/avataaars/svg?seed=Ana&backgroundColor=d1f0c2',
     role: 'user',
+    area: 'Jurídico',
     created_at: '2024-01-18T11:00:00Z',
   },
 ];

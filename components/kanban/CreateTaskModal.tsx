@@ -8,23 +8,19 @@ import { useKanban } from '@/context/KanbanContext';
 import { useAuth } from '@/context/AuthContext';
 import { addDays, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import toast from 'react-hot-toast';
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Regra de NegÃ³cio: Complexidade â†’ Prazo (SLA)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
+// Regra de Negócio: Complexidade → Prazo (SLA)
+// ─────────────────────────────────────────────────────────────────────────────
 const complexityRules: Record<string, { days: number; color: string; label: string }> = {
-  facil:   { days: 2,  color: 'bg-blue-500',   label: 'FÃ¡cil (AtÃ© 2 dias)' },
-  medio:   { days: 5,  color: 'bg-yellow-500',  label: 'MÃ©dio (3 a 5 dias)' },
-  dificil: { days: 15, color: 'bg-red-500',     label: 'DifÃ­cil (6 a 15 dias)' },
+  facil:   { days: 2,  color: 'bg-blue-500',   label: 'Fácil (Até 2 dias)' },
+  medio:   { days: 5,  color: 'bg-yellow-500',  label: 'Médio (3 a 5 dias)' },
+  dificil: { days: 15, color: 'bg-red-500',     label: 'Difícil (6 a 15 dias)' },
 };
 
 const PRESET_TAGS: Tag[] = [
-  { name: 'MÃ­dia',     color: 'bg-purple-500' },
   { name: 'Urgente',   color: 'bg-red-500'    },
-  { name: 'Proposta',  color: 'bg-green-500'  },
-  { name: 'Design',    color: 'bg-pink-500'   },
-  { name: 'Dev',       color: 'bg-cyan-500'   },
-  { name: 'RelatÃ³rio', color: 'bg-emerald-500'},
 ];
 
 export default function CreateTaskModal() {
@@ -70,7 +66,15 @@ export default function CreateTaskModal() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !currentUser) return;
+    if (!title.trim()) {
+      toast.error('O título da tarefa é obrigatório!');
+      return;
+    }
+    if (!currentUser) return;
+    
+    // Convert startDate from YYYY-MM-DD input field to full ISO date
+    const calculatedCreatedAt = new Date(startDate).toISOString();
+    
     createTask({
       title:        title.trim(),
       description,
@@ -80,6 +84,8 @@ export default function CreateTaskModal() {
       creator:      currentUser,
       company_name: company,
       tags:         selectedTags,
+      created_at:   calculatedCreatedAt,
+      due_date:     dueDate.toISOString(),
     });
     setShowCreateModal(false);
   };
@@ -101,39 +107,39 @@ export default function CreateTaskModal() {
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="relative bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl border border-gray-100 z-10 max-h-[90vh] overflow-y-auto scrollbar-thin"
+          className="relative bg-black/40 backdrop-blur-md rounded-2xl p-6 w-full max-w-lg shadow-2xl border border-white/10 z-10 max-h-[90vh] overflow-y-auto scrollbar-thin"
         >
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-gray-800">Nova Demanda</h2>
+            <h2 className="text-xl font-bold text-white">Nova Demanda</h2>
             <button
               onClick={() => setShowCreateModal(false)}
               title="Fechar"
               aria-label="Fechar modal"
-              className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400"
+              className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* TÃ­tulo */}
+            {/* Título */}
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
-              placeholder="TÃ­tulo da tarefa..."
-              className="w-full p-3 bg-gray-50 rounded-lg border-none focus:ring-2 focus:ring-blue-500 text-sm outline-none"
+              placeholder="Título da tarefa..."
+              className="w-full p-3 bg-black/40 backdrop-blur-md text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-blue-500 shadow-inner text-sm outline-none placeholder-slate-400"
             />
 
-            {/* DescriÃ§Ã£o */}
+            {/* Descrição */}
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
-              placeholder="DescriÃ§Ã£o (opcional)..."
-              className="w-full p-3 bg-gray-50 rounded-lg border-none focus:ring-2 focus:ring-blue-500 text-sm resize-none outline-none"
+              placeholder="Descrição (opcional)..."
+              className="w-full p-3 bg-black/40 backdrop-blur-md text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-blue-500 shadow-inner text-sm resize-none outline-none placeholder-slate-400"
             />
 
             {/* Empresa */}
@@ -141,12 +147,12 @@ export default function CreateTaskModal() {
               value={company}
               onChange={(e) => setCompany(e.target.value)}
               placeholder="Empresa / Projeto"
-              className="w-full p-3 bg-gray-50 rounded-lg border-none focus:ring-2 focus:ring-blue-500 text-sm outline-none"
+              className="w-full p-3 bg-black/40 backdrop-blur-md text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-blue-500 shadow-inner text-sm outline-none placeholder-slate-400"
             />
 
             {/* Complexidade */}
             <div>
-              <label className="text-xs font-bold text-gray-400 uppercase">Complexidade</label>
+              <label className="text-xs font-bold text-slate-400 uppercase">Complexidade</label>
               <div className="flex gap-2 mt-2">
                 {Object.keys(complexityRules).map((key) => (
                   <button
@@ -155,8 +161,8 @@ export default function CreateTaskModal() {
                     onClick={() => setComplexity(key as Complexity)}
                     className={`flex-1 py-2 px-3 rounded-md text-[10px] font-bold transition-all ${
                       complexity === key
-                        ? 'bg-black text-white shadow-lg'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        ? 'bg-white/20 text-white shadow-lg border border-white/20'
+                        : 'bg-black/40 text-slate-400 hover:bg-white/10 hover:text-white border border-white/5'
                     }`}
                   >
                     {complexityRules[key].label}
@@ -165,10 +171,10 @@ export default function CreateTaskModal() {
               </div>
             </div>
 
-            {/* Data + Prazo automÃ¡tico */}
+            {/* Data + Prazo automático */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-1">
+                <label className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1">
                   <Calendar size={12} /> Data Inicial
                 </label>
                 <input
@@ -177,37 +183,37 @@ export default function CreateTaskModal() {
                   onChange={(e) => setStartDate(e.target.value)}
                   title="Data inicial"
                   aria-label="Data inicial da tarefa"
-                  className="w-full mt-1 p-2 bg-gray-50 rounded-md border-none text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full mt-1 p-2 bg-black/40 backdrop-blur-md text-white border border-white/10 rounded-md text-xs outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              <div className="bg-gray-50 p-2 rounded-md border border-dashed border-gray-300 flex flex-col justify-center">
-                <label className="text-[10px] font-bold text-gray-400 uppercase">Prazo Estimado</label>
-                <p className="text-sm font-bold text-gray-700 mt-0.5">
-                  +{complexityRules[complexity].days} dias Ãºteis
+              <div className="bg-black/40 backdrop-blur-md p-2 rounded-md border border-dashed border-white/20 flex flex-col justify-center">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Prazo Estimado</label>
+                <p className="text-sm font-bold text-slate-200 mt-0.5">
+                  +{complexityRules[complexity].days} dias úteis
                 </p>
-                <p className="text-[10px] text-blue-600 font-semibold mt-0.5">{dueDateLabel}</p>
+                <p className="text-[10px] text-blue-400 font-semibold mt-0.5">{dueDateLabel}</p>
               </div>
             </div>
 
             {/* Coluna inicial */}
             <div>
-              <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">Coluna inicial</label>
+              <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Coluna inicial</label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as Status)}
                 title="Coluna inicial"
                 aria-label="Selecionar coluna inicial"
-                className="w-full p-3 bg-gray-50 rounded-lg border-none text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-3 bg-black/40 backdrop-blur-md text-white border border-white/10 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="todo">A Fazer</option>
-                <option value="doing">Fazendo</option>
-                <option value="done">Feito</option>
+                <option value="todo" className="bg-[#1e2336] text-white">A Fazer</option>
+                <option value="doing" className="bg-[#1e2336] text-white">Fazendo</option>
+                <option value="done" className="bg-[#1e2336] text-white">Feito</option>
               </select>
             </div>
 
             {/* Tags */}
             <div>
-              <label className="text-xs font-bold text-gray-400 uppercase mb-2 block">Tags</label>
+              <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">Tags</label>
               <div className="flex flex-wrap gap-2">
                 {PRESET_TAGS.map((tag) => {
                   const active = selectedTags.some((t) => t.name === tag.name);
@@ -219,7 +225,7 @@ export default function CreateTaskModal() {
                       className={`px-2.5 py-1 rounded-full text-xs font-bold border-2 transition-all ${
                         active
                           ? `${tag.color} text-white border-transparent`
-                          : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                          : 'border-white/10 text-slate-400 hover:border-white/30 hover:text-white'
                       }`}
                     >
                       {tag.name}
@@ -233,27 +239,27 @@ export default function CreateTaskModal() {
             <div
               {...getRootProps()}
               className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer group transition-colors ${
-                isDragActive ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:bg-blue-50'
+                isDragActive ? 'border-blue-400 bg-blue-500/10' : 'border-white/10 bg-black/20 hover:bg-white/5'
               }`}
             >
               <input {...getInputProps()} />
               <Upload
-                className={`mb-2 transition-colors ${isDragActive ? 'text-blue-500' : 'text-gray-300 group-hover:text-blue-500'}`}
+                className={`mb-2 transition-colors ${isDragActive ? 'text-blue-400' : 'text-slate-400 group-hover:text-blue-400'}`}
                 size={32}
               />
-              <p className="text-xs text-gray-500 text-center">
+              <p className="text-xs text-slate-400 text-center">
                 Arraste seus documentos ou{' '}
-                <span className="text-blue-600 font-bold">procure no computador</span>
+                <span className="text-blue-400 font-bold">procure no computador</span>
               </p>
-              <p className="text-[10px] text-gray-400 mt-1">PDF, Imagens, Excel</p>
+              <p className="text-[10px] text-slate-500 mt-1">PDF, Imagens, Excel</p>
             </div>
 
             {/* Ficheiros seleccionados */}
             {files.length > 0 && (
               <div className="space-y-1">
                 {files.map((f, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-1.5">
-                    ðŸ“Ž {f.name}
+                  <div key={i} className="flex items-center gap-2 text-xs text-slate-300 bg-black/40 backdrop-blur-md border border-white/10 rounded-lg px-3 py-1.5">
+                    📎 {f.name}
                   </div>
                 ))}
               </div>

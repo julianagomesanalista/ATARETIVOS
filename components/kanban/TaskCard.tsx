@@ -5,6 +5,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { MoreHorizontal, Clock, AlertTriangle } from 'lucide-react';
 import { Task } from '@/types';
 import { useKanban } from '@/context/KanbanContext';
+import Avatar from './Avatar';
 import {
   getTimeProgress,
   formatTimeLabel,
@@ -32,31 +33,32 @@ export default function TaskCard({ task, overlay = false }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: task.id, disabled: overlay });
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.35 : 1,
-  };
+
 
   return (
     <div
-      ref={setNodeRef}
-      style={style}
+      ref={(el) => {
+        setNodeRef(el);
+        if (el) {
+          el.style.transform = CSS.Transform.toString(transform) || '';
+          el.style.transition = transition || '';
+          el.style.opacity = isDragging ? '0.35' : '1';
+        }
+      }}
       {...attributes}
       {...listeners}
       onClick={() => !overlay && setSelectedTask(task)}
-      className={`bg-white rounded-xl p-4 border border-slate-100 cursor-grab active:cursor-grabbing select-none
-        transition-shadow hover:shadow-card-hover shadow-card
-        ${overdue && showTimer ? 'border-l-4 border-l-red-400' : ''}`}
+      className={`bg-black/40 backdrop-blur-md rounded-xl p-4 border border-white/10 cursor-grab active:cursor-grabbing select-none
+        transition-all hover:shadow-lg hover:shadow-black/40 hover:border-white/20 shadow-md
+        ${overdue && showTimer ? 'border-l-4 border-l-red-500' : ''}`}
     >
       {/* Top row: avatar + company */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 min-w-0">
-          <img
+          <Avatar
             src={task.creator?.avatar_url}
-            alt={task.creator?.full_name}
-            className="w-7 h-7 rounded-full border border-slate-200 flex-shrink-0"
-            draggable={false}
+            name={task.creator?.full_name}
+            className="w-7 h-7 rounded-full shrink-0 border border-slate-700"
           />
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">
             {task.company_name || 'PROJETO'}
@@ -66,14 +68,14 @@ export default function TaskCard({ task, overlay = false }: TaskCardProps) {
           onClick={(e) => { e.stopPropagation(); setSelectedTask(task); }}
           title="Ver detalhes"
           aria-label="Ver detalhes da tarefa"
-          className="p-1 rounded-md hover:bg-slate-100 text-slate-400 flex-shrink-0"
+          className="p-1 rounded-md hover:bg-[#2a3254] text-slate-400 shrink-0 hover:text-slate-200 transition-colors"
         >
           <MoreHorizontal className="w-3.5 h-3.5" />
         </button>
       </div>
 
       {/* Title */}
-      <h3 className="text-sm font-semibold text-slate-800 leading-snug mb-3 line-clamp-2">
+      <h3 className="text-sm font-semibold text-slate-200 leading-snug mb-3 line-clamp-2">
         {task.title}
       </h3>
 
@@ -93,16 +95,16 @@ export default function TaskCard({ task, overlay = false }: TaskCardProps) {
 
       {/* Footer: complexity + comments count */}
       <div className="flex items-center gap-2 mb-2.5">
-        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${COMPLEXITY_DOT[task.complexity]}`} />
+        <span className={`w-2 h-2 rounded-full shrink-0 ${COMPLEXITY_DOT[task.complexity]}`} />
         <span className="text-[10px] text-slate-400">{COMPLEXITY_LABELS[task.complexity]}</span>
         {task.comments.length > 0 && (
-          <span className="ml-auto text-[10px] text-slate-400">{task.comments.length} ðŸ’¬</span>
+          <span className="ml-auto text-[10px] text-slate-400">{task.comments.length} 💬</span>
         )}
       </div>
 
       {/* Time bar â€” only for todo / doing */}
       {showTimer && (
-        <div className="border-t border-slate-100 pt-2.5">
+        <div className="border-t border-slate-700/50 pt-2.5">
           <div className="flex justify-between items-center mb-1">
             <div className="flex items-center gap-1">
               {overdue ? (
@@ -110,16 +112,17 @@ export default function TaskCard({ task, overlay = false }: TaskCardProps) {
               ) : (
                 <Clock className="w-3 h-3 text-slate-400" />
               )}
-              <span className={`text-[10px] font-medium ${overdue ? 'text-red-500' : 'text-slate-500'}`}>
+              <span suppressHydrationWarning className={`text-[10px] font-medium ${overdue ? 'text-red-400' : 'text-slate-400'}`}>
                 {formatTimeLabel(task)}
               </span>
             </div>
-            <span className="text-[10px] text-slate-400">{Math.round(getTimeProgress(task))}%</span>
+            <span suppressHydrationWarning className="text-[10px] text-slate-400">{Math.round(getTimeProgress(task))}%</span>
           </div>
-          <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+          <div className="h-1.5 w-full bg-slate-700 rounded-full overflow-hidden">
             <div
+              suppressHydrationWarning
               className={`h-full rounded-full transition-all ${getProgressBarColor(task)}`}
-              style={{ width: `${getTimeProgress(task)}%` }}
+              ref={(el) => { if (el) el.style.width = `${getTimeProgress(task)}%`; }}
             />
           </div>
         </div>
@@ -127,9 +130,9 @@ export default function TaskCard({ task, overlay = false }: TaskCardProps) {
 
       {/* Done badge */}
       {task.status === 'done' && (
-        <div className="border-t border-slate-100 pt-2.5">
-          <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1">
-            âœ“ ConcluÃ­do
+        <div className="border-t border-slate-700/50 pt-2.5">
+          <span className="text-[10px] font-semibold text-emerald-400 flex items-center gap-1">
+            ✅ Concluído
           </span>
         </div>
       )}

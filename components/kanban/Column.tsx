@@ -16,7 +16,7 @@ export default function Column({ column }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
 
   return (
-    <div className="flex flex-col w-72 flex-shrink-0">
+    <div className="flex flex-col w-72 shrink-0">
       {/* Column header */}
       <div
         className="flex items-center justify-between px-4 py-3 rounded-t-xl"
@@ -40,8 +40,8 @@ export default function Column({ column }: ColumnProps) {
       {/* Drop zone */}
       <div
         ref={setNodeRef}
-        className={`flex-1 rounded-b-xl p-3 transition-colors overflow-y-auto scrollbar-thin min-h-[400px] ${
-          isOver ? 'drop-active' : 'bg-slate-100'
+        className={`flex-1 rounded-b-xl p-3 transition-colors overflow-y-auto scrollbar-thin min-h-[400px] border-x border-b border-white/10 ${
+          isOver ? 'bg-black/40 backdrop-blur-md' : 'bg-transparent'
         }`}
       >
         <SortableContext
@@ -56,8 +56,8 @@ export default function Column({ column }: ColumnProps) {
         </SortableContext>
 
         {column.tasks.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-            <span className="text-3xl mb-2">âœ¦</span>
+          <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+            <span className="text-3xl mb-2">¦</span>
             <p className="text-xs">Arraste um card aqui</p>
           </div>
         )}

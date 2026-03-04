@@ -3,14 +3,14 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShieldCheck, User, Search, Crown, Shield, ArrowLeft,
-  CheckCircle2, AlertTriangle, Users
+  CheckCircle2, AlertTriangle, Users, Briefcase
 } from 'lucide-react';
 import { Role, User as UserType } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-// â”€â”€â”€ ConfiguraÃ§Ã£o visual por Role â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€â”€ Configuraá§á£o visual por Role â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ROLE_CONFIG: Record<Role, {
   label: string;
   icon: React.ElementType;
@@ -29,8 +29,14 @@ const ROLE_CONFIG: Record<Role, {
     badge: 'bg-amber-100 text-amber-700 border border-amber-200',
     dot: 'bg-amber-400',
   },
+  gestor: {
+    label: 'Gestor',
+    icon: Briefcase,
+    badge: 'bg-indigo-100 text-indigo-700 border border-indigo-200',
+    dot: 'bg-indigo-400',
+  },
   user: {
-    label: 'UsuÃ¡rio',
+    label: 'Usuá¡rio',
     icon: User,
     badge: 'bg-slate-100 text-slate-500 border border-slate-200',
     dot: 'bg-slate-300',
@@ -57,7 +63,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     );
   }, [availableUsers, searchTerm]);
 
-  // EstatÃ­sticas rÃ¡pidas
+  // Estatá­sticas rá¡pidas
   const stats = useMemo(() => ({
     total: availableUsers.length,
     admins: availableUsers.filter((u) => u.role === 'admin').length,
@@ -78,14 +84,14 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50">
+    <div className="flex flex-col h-screen bg-[#1e2336]">
       {/* â”€â”€ Header â”€â”€ */}
-      <header className="bg-white border-b border-slate-100 px-8 py-4 flex items-center gap-4 flex-shrink-0">
+      <header className="bg-[#1e2336] border-b border-slate-700/50 px-8 py-4 flex items-center gap-4 shrink-0">
         <button
           onClick={onBack}
           title="Voltar ao Quadro"
           aria-label="Voltar ao Quadro"
-          className="w-9 h-9 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors"
+          className="w-9 h-9 rounded-xl hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-slate-200 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
@@ -95,8 +101,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             <Shield className="w-4 h-4 text-white" />
           </div>
           <div>
-            <h1 className="text-base font-black text-slate-900">GestÃ£o de Equipe</h1>
-            <p className="text-[11px] text-slate-400">Defina quem sÃ£o os Masters do G-Flow</p>
+            <h1 className="text-base font-black text-slate-900">Gestá£o de Equipe</h1>
+            <p className="text-[11px] text-slate-400">Defina quem sá£o os Masters do G-Flow</p>
           </div>
         </div>
 
@@ -110,21 +116,21 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             placeholder="Buscar colaborador..."
             title="Buscar colaborador"
             aria-label="Buscar colaborador"
-            className="pl-9 pr-4 h-9 w-64 rounded-xl bg-slate-100 text-sm text-slate-700 placeholder-slate-400 border border-transparent focus:outline-none focus:border-blue-400 focus:bg-white transition-all"
+            className="pl-9 pr-4 h-9 w-64 rounded-xl bg-black/40 backdrop-blur-md border border-white/10 shadow-inner text-sm text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white/10 transition-all"
           />
         </div>
       </header>
 
       <div className="flex-1 overflow-y-auto px-8 py-6">
-        {/* â”€â”€ Cards de estatÃ­sticas â”€â”€ */}
+        {/* â”€â”€ Cards de estatá­sticas â”€â”€ */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           {[
             { label: 'Total', value: stats.total, icon: Users, color: 'text-slate-600', bg: 'bg-slate-100' },
             { label: 'Admins', value: stats.admins, icon: ShieldCheck, color: 'text-blue-600', bg: 'bg-blue-100' },
             { label: 'Masters', value: stats.masters, icon: Crown, color: 'text-amber-600', bg: 'bg-amber-100' },
-            { label: 'UsuÃ¡rios', value: stats.users, icon: User, color: 'text-slate-500', bg: 'bg-slate-100' },
+            { label: 'Usuá¡rios', value: stats.users, icon: User, color: 'text-slate-500', bg: 'bg-slate-100' },
           ].map(({ label, value, icon: Icon, color, bg }) => (
-            <div key={label} className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex items-center gap-4">
+            <div key={label} className="bg-black/40 backdrop-blur-md rounded-2xl p-4 border border-white/10 shadow-xl flex items-center gap-4">
               <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center flex-shrink-0`}>
                 <Icon className={`w-5 h-5 ${color}`} />
               </div>
@@ -136,10 +142,10 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
           ))}
         </div>
 
-        {/* â”€â”€ Tabela de usuÃ¡rios â”€â”€ */}
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+        {/* â”€â”€ Tabela de usuá¡rios â”€â”€ */}
+        <div className="bg-black/40 backdrop-blur-md rounded-3xl shadow-xl border border-white/10 overflow-hidden">
           <table className="w-full text-left">
-            <thead className="bg-slate-50 border-b border-slate-100">
+            <thead className="bg-black/40 backdrop-blur-md border-b border-white/10">
               <tr>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">
                   Colaborador
@@ -151,11 +157,11 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   Membro desde
                 </th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                  NÃ­vel de Acesso
+                  Ná­vel de Acesso
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-slate-700/30">
               <AnimatePresence initial={false}>
                 {filtered.map((user) => {
                   const isMe = user.id === currentUser?.id;
@@ -170,7 +176,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}
-                      className={`transition-colors ${isMe ? 'bg-blue-50/40' : 'hover:bg-slate-50'}`}
+                      className={`transition-colors ${isMe ? 'bg-blue-600/10' : 'hover:bg-[#2a3254]'}`}
                     >
                       {/* Avatar + Nome */}
                       <td className="px-6 py-4">
@@ -179,18 +185,18 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             <img
                               src={user.avatar_url}
                               alt={user.full_name}
-                              className="w-10 h-10 rounded-full border-2 border-white shadow-sm"
+                              className="w-10 h-10 rounded-full border-2 border-slate-700 shadow-sm"
                             />
                             <span
                               className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${cfg.dot}`}
                             />
                           </div>
                           <div>
-                            <p className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                            <p className="text-sm font-bold text-slate-200 flex items-center gap-1.5">
                               {user.full_name}
                               {isMe && (
                                 <span className="text-[9px] font-bold bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">
-                                  VocÃª
+                                  Vocáª
                                 </span>
                               )}
                             </p>
@@ -209,11 +215,11 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       {/* Role selector */}
                       <td className="px-6 py-4">
                         {isMe ? (
-                          /* Admin nÃ£o pode alterar o prÃ³prio role */
+                          /* Admin ná£o pode alterar o prá³prio role */
                           <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold ${cfg.badge}`}>
                             <RoleIcon className="w-3 h-3" />
                             {cfg.label}
-                            <span className="ml-1 text-[9px] opacity-60">(vocÃª)</span>
+                            <span className="ml-1 text-[9px] opacity-60">(vocáª)</span>
                           </div>
                         ) : (
                           <div className="flex items-center gap-2">
@@ -224,14 +230,15 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             <select
                               value={user.role}
                               disabled={isUpdating}
-                              title={`Alterar nÃ­vel de ${user.full_name}`}
-                              aria-label={`Alterar nÃ­vel de ${user.full_name}`}
+                              title={`Alterar ná­vel de ${user.full_name}`}
+                              aria-label={`Alterar ná­vel de ${user.full_name}`}
                               onChange={(e) => handleRoleChange(user, e.target.value as Role)}
-                              className="bg-slate-100 hover:bg-slate-200 border-none rounded-xl text-xs font-bold px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none transition-colors cursor-pointer disabled:opacity-50"
+                              className="bg-[#1e2336] hover:bg-[#2a3254] border border-slate-700/50 rounded-xl text-xs font-bold px-3 py-1.5 text-slate-300 focus:ring-2 focus:ring-blue-500 outline-none transition-colors cursor-pointer disabled:opacity-50"
                             >
-                              <option value="user">UsuÃ¡rio Comum</option>
-                              <option value="master">Master â€” pode editar tudo</option>
-                              <option value="admin">Admin â€” acesso total</option>
+                              <option value="user">Usuário Comum</option>
+                              <option value="gestor">Gestor de Área</option>
+                              <option value="master">Sócio — pode editar tudo</option>
+                              <option value="admin">Admin — acesso total</option>
                             </select>
                             {isUpdating && (
                               <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -264,10 +271,12 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             {(Object.entries(ROLE_CONFIG) as [Role, typeof ROLE_CONFIG[Role]][]).map(([role, cfg]) => {
               const Icon = cfg.icon;
               const descriptions: Record<Role, string[]> = {
-                admin:  ['Acesso total ao sistema', 'Gerencia usuÃ¡rios e roles', 'NÃ£o pode ser editado por outros'],
-                master: ['Edita e exclui qualquer tarefa', 'Edita e exclui qualquer comentÃ¡rio', 'NÃ£o acessa painel de usuÃ¡rios'],
-                user:   ['Cria e edita suas tarefas', 'Edita apenas seus comentÃ¡rios', 'Sem permissÃµes especiais'],
+                admin:  ['Acesso total ao sistema', 'Gerencia usuários e roles', 'Não pode ser editado por outros'],
+                master: ['Edita e exclui qualquer tarefa', 'Edita e exclui qualquer comentário', 'Não acessa painel de usuários'],
+                gestor: ['Visualiza relatórios da sua área', 'Vê carga de trabalho da equipe', 'Não acessa painel de admin'],
+                user:   ['Cria e edita suas tarefas', 'Edita apenas seus comentários', 'Sem permissões especiais'],
               };
+
               return (
                 <div key={role} className={`rounded-xl p-4 border ${cfg.badge.includes('blue') ? 'border-blue-100 bg-blue-50/50' : cfg.badge.includes('amber') ? 'border-amber-100 bg-amber-50/50' : 'border-slate-100 bg-slate-50/50'}`}>
                   <div className="flex items-center gap-2 mb-3">
@@ -291,7 +300,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         </div>
       </div>
 
-      {/* â”€â”€ Toast de confirmaÃ§Ã£o â”€â”€ */}
+      {/* â”€â”€ Toast de confirmaá§á£o â”€â”€ */}
       <AnimatePresence>
         {toast && (
           <motion.div
@@ -302,7 +311,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
           >
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
             <span>
-              <strong>{toast.name}</strong> agora Ã©{' '}
+              <strong>{toast.name}</strong> agora á©{' '}
               <strong>{ROLE_CONFIG[toast.role].label}</strong>
             </span>
           </motion.div>

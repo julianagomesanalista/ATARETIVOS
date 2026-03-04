@@ -1,75 +1,153 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { User, Comment, Role } from '@/types';
-import { mockUsers } from '@/data/mockData';
+import { createClient } from '@/utils/supabase/client';
+import toast from 'react-hot-toast';
 
 interface AuthContextType {
   currentUser: User | null;
   isAuthenticated: boolean;
   availableUsers: User[];
-  loginWithGoogle: (userInfo: any) => void;
-  logout: () => void;
+  loginWithGoogle: () => Promise<void>;
+  loginWithEmail: (email: string) => Promise<void>;
+  logout: () => Promise<void>;
   canEditComment: (comment: Comment) => boolean;
   canDeleteTask: (creatorId: string) => boolean;
   canManageUsers: () => boolean;
   updateUserRole: (userId: string, newRole: Role) => Promise<void>;
+  updateUserProfile: (userId: string, data: Partial<User>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const supabase = createClient();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [availableUsers, setAvailableUsers] = useState<User[]>(mockUsers);
+  const [availableUsers, setAvailableUsers] = useState<User[]>([]);
 
-  const loginWithGoogle = useCallback((userInfo: any) => {
-    try {
-      const email = userInfo.email;
-      const name = userInfo.name || userInfo.given_name;
-      const picture = userInfo.picture;
-      const sub = userInfo.sub;
+  // Carregar todos os usuários do banco de dados (para popular o chat/atribuições)
+  const fetchUsers = useCallback(async () => {
+    const { data, error } = await supabase.from('users').select('*');
+    if (!error && data) {
+      setAvailableUsers(data);
+    }
+  }, [supabase]);
 
-      setAvailableUsers((prevUsers) => {
-        let existingUser = prevUsers.find((u) => u.email === email);
+  // Checar a sessão ativa ao carregar a página
+  useEffect(() => {
+    const initAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        // Busca do nosso BD 'users'
+        const { data: userRecord } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', session.user.email)
+          .single();
         
-        if (existingUser) {
-          existingUser = { ...existingUser, avatar_url: picture, full_name: name, google_id: sub };
-          setCurrentUser(existingUser);
-          return prevUsers.map(u => u.id === existingUser!.id ? existingUser! : u);
+        if (userRecord) {
+          setCurrentUser(userRecord);
         } else {
-          // Definir o seu email aqui para que você seja criado como Admin
-          const ADMIN_EMAILS = ['juliana.gomes@example.com']; // Apenas como placeholder, você pode me informar seu e-mail real!
-          const isInitialAdmin = ADMIN_EMAILS.includes(email);
-
-          // New user
-          const newUser: User = {
-            id: `usr-${sub}`, // unique enough
-            google_id: sub,
-            email: email,
-            full_name: name,
-            avatar_url: picture,
-            role: isInitialAdmin ? 'admin' : 'user',
-            created_at: new Date().toISOString()
+          // Se não existir, criar (pode ocorrer no primeiro login com Google/Email)
+          const newUser = {
+            id: session.user.id,
+            email: session.user.email!,
+            full_name: session.user.user_metadata.full_name || session.user.email?.split('@')[0],
+            avatar_url: session.user.user_metadata.avatar_url || '',
+            role: session.user.email === 'juliana.gomes081197@gmail.com' ? 'admin' : 'user',
+            google_id: session.user.id
           };
-          setCurrentUser(newUser);
-          return [...prevUsers, newUser];
+          
+          const { data: insertedUser, error } = await supabase
+            .from('users')
+            .insert(newUser)
+            .select()
+            .single();
+            
+          if (insertedUser) setCurrentUser(insertedUser);
+        }
+      }
+      
+      fetchUsers();
+    };
+
+    initAuth();
+
+    // Listen to Auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        // Mesma lógica de upsert de usuário ao fazer login
+        const { data: userRecord } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', session.user.email)
+          .single();
+          
+        if (userRecord) {
+          setCurrentUser(userRecord);
+        } else {
+          const newUser = {
+            id: session.user.id,
+            email: session.user.email!,
+            full_name: session.user.user_metadata.full_name || session.user.email?.split('@')[0],
+            avatar_url: session.user.user_metadata.avatar_url || '',
+            role: session.user.email === 'juliana.gomes081197@gmail.com' ? 'admin' : 'user',
+            google_id: session.user.id
+          };
+          
+          await supabase.from('users').insert(newUser);
+          setCurrentUser(newUser as User);
+        }
+        fetchUsers();
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase, fetchUsers]);
+
+  const loginWithGoogle = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/`
         }
       });
-    } catch(err) {
-      console.error('Failed to parse Google JWT', err);
+      if (error) throw error;
+    } catch (error: any) {
+      toast.error(`Erro no login: ${error.message}`);
     }
-  }, []);
+  };
 
-  const logout = useCallback(() => {
-    setCurrentUser(null);
-  }, []);
+  const loginWithEmail = async (email: string) => {
+    try {
+      // Opcional: Aqui seria necessário uma senha
+      // Como a UI tem tela de senha, isso precisaria ser adaptado
+      // Para simular "Magic Link"
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/dashboard`,
+        },
+      });
+      if (error) throw error;
+      toast.success('Link de login enviado para seu email!');
+    } catch (error: any) {
+      toast.error(`Erro no envio: ${error.message}`);
+    }
+  };
 
-  /**
-   * RBAC: can the current user edit a given comment?
-   * Rules:
-   *   - admin / master → always yes
-   *   - user → only if they are the comment author
-   */
+  const logout = async () => {
+    await supabase.auth.signOut();
+    window.location.href = '/';
+  };
+
   const canEditComment = useCallback(
     (comment: Comment): boolean => {
       if (!currentUser) return false;
@@ -79,10 +157,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [currentUser]
   );
 
-  /**
-   * Can the user delete a task?
-   * admin / master can delete any; user can only delete their own
-   */
   const canDeleteTask = useCallback(
     (creatorId: string): boolean => {
       if (!currentUser) return false;
@@ -92,24 +166,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [currentUser]
   );
 
-  /** Only admin can manage user roles */
   const canManageUsers = useCallback((): boolean => {
     return currentUser?.role === 'admin';
   }, [currentUser]);
 
   const updateUserRole = useCallback(async (userId: string, newRole: Role) => {
-    // Simulate API call
-    console.log(`Alterando usuário ${userId} para ${newRole}`);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    setAvailableUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
-    );
-
-    if (currentUser?.id === userId) {
-      setCurrentUser((prev) => (prev ? { ...prev, role: newRole } : null));
+    if (!canManageUsers()) return;
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ role: newRole })
+        .eq('id', userId);
+        
+      if (error) throw error;
+      
+      setAvailableUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
+      if (currentUser?.id === userId) setCurrentUser((prev) => prev ? { ...prev, role: newRole } : null);
+      toast.success('Cargo atualizado com sucesso!');
+    } catch(err: any) {
+      toast.error(`Erro ao atualizar cargo: ${err.message}`);
     }
-  }, [currentUser]);
+  }, [currentUser, canManageUsers, supabase]);
+
+  const updateUserProfile = useCallback(async (userId: string, data: Partial<User>) => {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update(data)
+        .eq('id', userId);
+        
+      if (error) throw error;
+      
+      setAvailableUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...data } : u)));
+      if (currentUser?.id === userId) setCurrentUser((prev) => prev ? { ...prev, ...data } : null);
+      toast.success('Perfil atualizado com sucesso!');
+    } catch(err: any) {
+      toast.error(`Erro ao atualizar perfil: ${err.message}`);
+    }
+  }, [currentUser, supabase]);
 
   return (
     <AuthContext.Provider
@@ -118,11 +212,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: !!currentUser,
         availableUsers,
         loginWithGoogle,
+        loginWithEmail,
         logout,
         canEditComment,
         canDeleteTask,
         canManageUsers,
         updateUserRole,
+        updateUserProfile,
       }}
     >
       {children}

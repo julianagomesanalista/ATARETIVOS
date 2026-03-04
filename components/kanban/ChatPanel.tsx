@@ -8,8 +8,8 @@ import { useAuth } from '@/context/AuthContext';
 import { ChatMessage } from '@/types';
 
 /**
- * formatMessage â€” detecta menÃ§Ãµes #palavra e transforma em link clicÃ¡vel.
- * Ao clicar numa menÃ§Ã£o, chama openTaskModal(taskId) conforme spec.
+ * formatMessage – detecta menções #palavra e transforma em link clicável.
+ * Ao clicar numa menção, chama openTaskModal(taskId) conforme spec.
  */
 function formatMessage(text: string, openTaskModal: (id: string) => void) {
   const parts = text.split(/(#\w+)/g);
@@ -31,7 +31,7 @@ function formatMessage(text: string, openTaskModal: (id: string) => void) {
 }
 
 export default function ChatPanel() {
-  const { chatMessages, sendChatMessage, setShowChat, getTaskById, setSelectedTask } = useKanban();
+  const { chatMessages, sendChatMessage, getTaskById, setSelectedTask } = useKanban();
   const { currentUser } = useAuth();
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -46,13 +46,13 @@ export default function ChatPanel() {
     setInput('');
   };
 
-  // Abre o modal da tarefa ao clicar numa menÃ§Ã£o #id (conforme spec: openTaskModal)
+  // Abre o modal da tarefa ao clicar numa menção #id (conforme spec: openTaskModal)
   const openTaskModal = (taskId: string) => {
     const task = getTaskById(taskId);
     if (task) setSelectedTask(task);
   };
 
-  // Group messages â€” show date dividers
+  // Group messages — show date dividers
   const grouped: { date: string; messages: ChatMessage[] }[] = [];
   chatMessages.forEach((msg) => {
     const dateStr = format(new Date(msg.created_at), 'dd MMM yyyy', { locale: ptBR });
@@ -70,7 +70,6 @@ export default function ChatPanel() {
           <p className="text-[10px] text-slate-500 mt-0.5">Use #task-id para referenciar tarefas</p>
         </div>
         <button
-          onClick={() => setShowChat(false)}
           title="Fechar chat"
           aria-label="Fechar chat"
           className="w-7 h-7 rounded-lg hover:bg-slate-800 flex items-center justify-center text-slate-500 hover:text-slate-300"
@@ -102,7 +101,7 @@ export default function ChatPanel() {
                     <img
                       src={msg.sender?.avatar_url}
                       alt={msg.sender?.full_name}
-                      className="w-7 h-7 rounded-full border border-slate-700 flex-shrink-0 mt-0.5"
+                      className="w-7 h-7 rounded-full border border-slate-700 shrink-0 mt-0.5"
                     />
                   )}
 
@@ -146,7 +145,7 @@ export default function ChatPanel() {
           <button
             onClick={handleSend}
             disabled={!input.trim()}
-            className="w-9 h-9 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white flex items-center justify-center flex-shrink-0 transition-colors"
+            className="w-9 h-9 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white flex items-center justify-center shrink-0 transition-colors"
           >
             <Send className="w-3.5 h-3.5" />
           </button>
