@@ -1,0 +1,1 @@
+components/kanban/pages/ConfigPanel.tsx(60,29): error TS18047: 'currentUser' is possibly 'null'.

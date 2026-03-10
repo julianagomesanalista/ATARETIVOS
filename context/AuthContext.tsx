@@ -4,13 +4,15 @@ import React, { createContext, useContext, useState, useCallback, useEffect, Rea
 import { User, Comment, Role } from '@/types';
 import { createClient } from '@/utils/supabase/client';
 import toast from 'react-hot-toast';
+import { googleLogout } from '@react-oauth/google';
 
 interface AuthContextType {
   currentUser: User | null;
   isAuthenticated: boolean;
   availableUsers: User[];
-  loginWithGoogle: () => Promise<void>;
-  loginWithEmail: (email: string) => Promise<void>;
+  loginWithGoogle: (userInfo: any) => Promise<void>;
+  loginWithEmail: (email: string, password?: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string, fullName: string) => Promise<void>;
   logout: () => Promise<void>;
   canEditComment: (comment: Comment) => boolean;
   canDeleteTask: (creatorId: string) => boolean;
@@ -37,6 +39,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Checar a sessão ativa ao carregar a página
   useEffect(() => {
     const initAuth = async () => {
+      // 1. Verificar se há um login do Google salvo localmente
+      const storedGoogleUser = localStorage.getItem('kanban_google_user');
+      if (storedGoogleUser) {
+        try {
+          const user = JSON.parse(storedGoogleUser);
+          setCurrentUser(user);
+          // Opcional: atualizar os dados dele com o banco em background
+          const { data: dbUser } = await supabase.from('users').select('*').eq('id', user.id).single();
+          if (dbUser) setCurrentUser(dbUser);
+          fetchUsers();
+          return; // Já logou, encerra o fluxo
+        } catch (e) {
+          localStorage.removeItem('kanban_google_user');
+        }
+      }
+
+      // 2. Fluxo normal do Supabase (Email/Senha)
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session?.user) {
@@ -106,45 +125,125 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
+    // Real-time listener para os usuários (para o chat atualizar quando alguém se cadastrar/mudar de foto)
+    const channel = supabase
+      .channel('users-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, fetchUsers)
+      .subscribe();
+
     return () => {
       subscription.unsubscribe();
+      supabase.removeChannel(channel);
     };
   }, [supabase, fetchUsers]);
 
-  const loginWithGoogle = async () => {
+  const loginWithGoogle = async (userInfo: any) => {
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/`
-        }
+      const email = userInfo.email;
+      const name = userInfo.name || userInfo.given_name;
+      const picture = userInfo.picture;
+      const sub = userInfo.sub; // unique Google ID
+
+      // Verifica se o usuário já existe no banco (pelo email)
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email)
+        .single();
+
+      let userToSet;
+
+      if (existingUser) {
+        // Preserve custom avatar (base64) - only use Google's picture if no custom one
+        const hasCustomAvatar = existingUser.avatar_url && existingUser.avatar_url.startsWith('data:');
+        const finalAvatar = hasCustomAvatar ? existingUser.avatar_url : picture;
+        const updatedUser = { ...existingUser, avatar_url: finalAvatar, full_name: existingUser.full_name || name, google_id: sub };
+        await supabase.from('users').update({ avatar_url: finalAvatar, full_name: updatedUser.full_name, google_id: sub }).eq('id', existingUser.id);
+        userToSet = updatedUser;
+      } else {
+        // Novo usuário
+        const isInitialAdmin = email === 'juliana.gomes081197@gmail.com';
+        const newUser = {
+          id: `usr-${sub}`, // unique string para n conflitar com uuids se houver
+          google_id: sub,
+          email: email,
+          full_name: name,
+          avatar_url: picture,
+          role: isInitialAdmin ? 'admin' : 'user',
+        };
+        await supabase.from('users').insert(newUser);
+        userToSet = newUser;
+      }
+
+      setCurrentUser(userToSet as User);
+      localStorage.setItem('kanban_google_user', JSON.stringify(userToSet)); // Persistência
+      toast.success('Login com Google efetuado!');
+    } catch (error: any) {
+      console.error('Failed to parse Google JWT or db error', error);
+      toast.error(`Erro no login com Google: ${error.message || 'Desconhecido'}`);
+    }
+  };
+
+  const loginWithEmail = async (email: string, password?: string) => {
+    try {
+      if (!password) {
+        toast.error('A senha é obrigatória.');
+        return;
+      }
+      
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       });
       if (error) throw error;
+      toast.success('Login efetuado com sucesso!');
     } catch (error: any) {
       toast.error(`Erro no login: ${error.message}`);
     }
   };
 
-  const loginWithEmail = async (email: string) => {
+  const signUpWithEmail = async (email: string, password: string, fullName: string) => {
     try {
-      // Opcional: Aqui seria necessário uma senha
-      // Como a UI tem tela de senha, isso precisaria ser adaptado
-      // Para simular "Magic Link"
-      const { error } = await supabase.auth.signInWithOtp({
+      const { data, error } = await supabase.auth.signUp({
         email,
+        password,
         options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        },
+          data: {
+            full_name: fullName,
+          }
+        }
       });
       if (error) throw error;
-      toast.success('Link de login enviado para seu email!');
+      
+      if (data.user?.identities?.length === 0) {
+        toast.error('Este email já está cadastrado. Tente fazer login.');
+        return;
+      }
+      
+      // Se não retornar sessão de imediato, significa que a confirmação de email está ativada no Supabase
+      if (data.user && !data.session) {
+        toast.success('Conta criada! Por favor, acesse seu e-mail e clique no link para confirmar seu cadastro.', { duration: 8000 });
+      } else {
+        toast.success('Conta criada com sucesso! Faça login para continuar.');
+      }
     } catch (error: any) {
-      toast.error(`Erro no envio: ${error.message}`);
+      toast.error(`Erro ao criar conta: ${error.message}`);
     }
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    try {
+      googleLogout();
+    } catch (error) {
+       console.error(error);
+    }
+    localStorage.removeItem('kanban_google_user');
+    setCurrentUser(null); // Force UI update immediately
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error(error);
+    }
     window.location.href = '/';
   };
 
@@ -213,6 +312,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         availableUsers,
         loginWithGoogle,
         loginWithEmail,
+        signUpWithEmail,
         logout,
         canEditComment,
         canDeleteTask,

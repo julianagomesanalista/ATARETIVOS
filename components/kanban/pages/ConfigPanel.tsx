@@ -56,6 +56,7 @@ export default function ConfigPanel() {
   }, [currentUser]);
 
   const handleSaveBackground = async () => {
+    if (!currentUser) return;
     setIsSavingBg(true);
     await updateUserProfile(currentUser.id, { background_url: selectedBg });
     setIsSavingBg(false);

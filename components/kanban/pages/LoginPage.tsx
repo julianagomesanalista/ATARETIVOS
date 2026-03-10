@@ -1,39 +1,59 @@
 ﻿"use client";
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Star, User as UserIcon, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useKanban } from '@/context/KanbanContext';
-import { COMPLEXITY_LABELS } from '@/utils/sla';
-import { formatDistanceToNow } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 
 import { SplineScene } from "@/components/ui/splite";
 import { Card } from "@/components/ui/card";
-import { Spotlight } from "@/components/ui/spotlight";
 import { useRouter } from 'next/navigation';
-import Avatar from '@/components/kanban/Avatar';
+import { useGoogleLogin } from '@react-oauth/google';
 import WarningDashboard from '../WarningDashboard';
-const ROLE_CONFIG = {
-  admin: { label: 'Administrador', icon: Shield, color: 'from-red-500 to-rose-600', desc: 'Gerenciador e permissões globais.' },
-  master: { label: 'Master', icon: Star, color: 'from-amber-500 to-orange-600', desc: 'Edita/exclui qualquer card ou comentário.' },
-  user: { label: 'Usuário', icon: UserIcon, color: 'from-blue-500 to-indigo-600', desc: 'Cria, comenta e move cards.' },
-};
 
 export default function LoginPage() {
-  const { loginWithGoogle, isAuthenticated, loginWithEmail } = useAuth();
+  const { loginWithGoogle, isAuthenticated, loginWithEmail, signUpWithEmail, currentUser, availableUsers } = useAuth();
   const router = useRouter();
 
-  const { overdueTasks } = useKanban();
+  const { overdueTasks: allOverdueTasks } = useKanban();
+
+  // Filter overdue tasks based on the user's role — same visibility rules as the kanban board
+  const overdueTasks = React.useMemo(() => {
+    if (!currentUser) return [];
+    if (currentUser.role === 'admin' || currentUser.role === 'master') {
+      return allOverdueTasks; // see all
+    }
+    if (currentUser.role === 'gestor' && currentUser.area) {
+      const areaIds = availableUsers.filter(u => u.area === currentUser.area).map(u => u.id);
+      return allOverdueTasks.filter(t => areaIds.includes(t.creator_id));
+    }
+    // 'user' — sees only their own overdue tasks
+    return allOverdueTasks.filter(t => t.creator_id === currentUser.id);
+  }, [allOverdueTasks, currentUser, availableUsers]);
   const [step, setStep] = useState<'login' | 'overdue'>('login');
+  const [isLogin, setIsLogin] = useState(true);
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleStandardLogin = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if(email) {
-      loginWithEmail(email);
+    if (!email || !password) return;
+    setIsLoading(true);
+    
+    if (isLogin) {
+      await loginWithEmail(email, password);
+    } else {
+      if (!fullName) {
+        setIsLoading(false);
+        return;
+      }
+      await signUpWithEmail(email, password, fullName);
+      if(isLogin === false) { //if successful we keep them there, but theoretically it could redirect
+         //setIsLogin(true); // Optional: Switch to login tab after success
+      }
     }
+    setIsLoading(false);
   };
 
   React.useEffect(() => {
@@ -42,10 +62,30 @@ export default function LoginPage() {
     }
   }, [isAuthenticated, step]);
 
+  const handleGoogleSuccess = async (tokenResponse: any) => {
+    try {
+      const userInfo = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+      }).then(res => res.json());
+
+      if (userInfo && userInfo.email) {
+        await loginWithGoogle(userInfo);
+      }
+    } catch (err) {
+      console.error('Failed to fetch user info', err);
+    }
+  };
+
+  const login = useGoogleLogin({
+    onSuccess: handleGoogleSuccess,
+    onError: () => console.error('Login Failed'),
+    prompt: 'select_account'
+  });
+
 
 
   return (
-    <main suppressHydrationWarning className="relative h-screen w-screen bg-black flex items-center justify-center overflow-hidden">
+    <main suppressHydrationWarning className="relative h-screen w-full bg-black flex items-center justify-center overflow-hidden">
       <AnimatePresence mode="wait">
         {step === 'login' ? (
           /* Login step */
@@ -55,31 +95,48 @@ export default function LoginPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="w-full h-full flex items-center justify-center p-0 m-0 overflow-hidden"
+            className="w-full h-full flex items-center justify-center p-0 m-0"
           >
-            <Card suppressHydrationWarning className="w-full h-full bg-black border-none rounded-none relative overflow-hidden flex flex-col md:flex-row shadow-none m-0">
-              <Spotlight
-                className="-top-40 left-0 md:left-60 md:-top-20"
-                fill="white"
-              />
+            <Card suppressHydrationWarning className="w-full h-full bg-black border-none rounded-none relative flex flex-col md:flex-row shadow-none m-0">
               
               <div suppressHydrationWarning className="flex h-full w-full flex-col md:flex-row">
-                {/* Left content */}
-                <div suppressHydrationWarning className="flex-1 p-8 md:p-14 md:pr-4 relative z-10 flex flex-col justify-center items-center text-center">
-                  <h1 className="text-5xl md:text-7xl lg:text-8xl font-black bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400 tracking-tight mb-4">
+                <div suppressHydrationWarning className="flex-1 p-6 flex flex-col justify-center items-center text-center h-full xl:max-w-3xl xl:mx-auto">
+                  <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400 tracking-tight mb-2 md:mb-4">
                     ATARETIVOS
                   </h1>
-                  <p className="text-neutral-300 text-lg md:text-xl max-w-lg font-medium mb-12">
+                  <p className="text-neutral-300 text-sm sm:text-base md:text-lg max-w-md font-medium mb-6 md:mb-10">
                     Plataforma de gerenciamento de tarefas internas da <span className="text-blue-400 font-bold drop-shadow-sm">Ativos</span>
                   </p>
 
                   {/* Built-in Login Form */}
                   <div suppressHydrationWarning className="glass rounded-3xl p-6 shadow-2xl space-y-5 w-full max-w-sm backdrop-blur-md bg-black/40 border border-white/10 text-center">
                     <div suppressHydrationWarning className="space-y-1 text-center">
-                      <h2 className="font-semibold text-lg text-white drop-shadow-md">Acesse sua conta</h2>
+                      <h2 className="font-semibold text-lg text-white drop-shadow-md">
+                        {isLogin ? 'Acesse sua conta' : 'Crie sua conta'}
+                      </h2>
                     </div>
 
-                    <form onSubmit={handleStandardLogin} className="space-y-4">
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                      <AnimatePresence>
+                        {!isLogin && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <input
+                              type="text"
+                              placeholder="Nome Completo"
+                              value={fullName}
+                              onChange={(e) => setFullName(e.target.value)}
+                              className="w-full h-12 bg-[#0f172a]/70 border border-slate-700/80 rounded-xl px-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder:text-slate-400"
+                              required={!isLogin}
+                            />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
                       <input
                         type="email"
                         placeholder="E-mail"
@@ -95,14 +152,34 @@ export default function LoginPage() {
                         onChange={(e) => setPassword(e.target.value)}
                         className="w-full h-12 bg-[#0f172a]/70 border border-slate-700/80 rounded-xl px-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder:text-slate-400"
                         required
+                        minLength={6}
                       />
                       <button
                         type="submit"
-                        className="w-full h-12 rounded-xl bg-linear-to-r from-blue-500 to-indigo-600 text-white font-semibold text-sm hover:shadow-lg hover:shadow-blue-500/40 transition-all"
+                        disabled={isLoading}
+                        className="w-full h-12 rounded-xl bg-linear-to-r from-blue-500 to-indigo-600 text-white font-semibold text-sm hover:shadow-lg hover:shadow-blue-500/40 transition-all disabled:opacity-50"
                       >
-                        Entrar
+                        {isLoading ? 'Aguarde...' : (isLogin ? 'Entrar' : 'Criar conta')}
                       </button>
                     </form>
+
+                    <div suppressHydrationWarning className="text-sm text-slate-400">
+                      {isLogin ? (
+                        <>
+                          Não tem uma conta?{' '}
+                          <button type="button" onClick={() => setIsLogin(false)} className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
+                            Cadastre-se
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          Já tem uma conta?{' '}
+                          <button type="button" onClick={() => setIsLogin(true)} className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
+                            Entrar
+                          </button>
+                        </>
+                      )}
+                    </div>
 
                     <div suppressHydrationWarning className="relative">
                       <div suppressHydrationWarning className="absolute inset-0 flex items-center">
@@ -115,7 +192,7 @@ export default function LoginPage() {
 
                     <button
                       type="button"
-                      onClick={loginWithGoogle}
+                      onClick={() => login()}
                       className="w-full h-12 rounded-xl bg-white text-slate-900 font-bold text-sm flex items-center justify-center gap-3 hover:bg-slate-100 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-sm"
                     >
                       <svg viewBox="0 0 24 24" className="w-5 h-5">
@@ -142,7 +219,7 @@ export default function LoginPage() {
                 </div>
 
                 {/* Right content - Spline Canvas */}
-                <div suppressHydrationWarning className="flex-1 relative hidden md:block border-l border-white/5 bg-black/50 overflow-hidden">
+                <div suppressHydrationWarning className="md:w-1/2 relative hidden md:block border-l border-white/5 bg-black/50">
                   <SplineScene 
                     scene="https://prod.spline.design/kZDDjO5HuC9GJUM2/scene.splinecode"
                     className="w-full h-full relative z-10"

@@ -49,17 +49,31 @@ export function KanbanProvider({ children }: { children: ReactNode }) {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [chatTabs, setChatTabs] = useState<ChatTabState[]>([
-    { id: 'global', type: 'global', chatName: 'Chat da Equipe', draft: '', isOpen: false, isMinimized: false }
-  ]);
+  const [chatTabs, setChatTabs] = useState<ChatTabState[]>(() => {
+    // Restore lastReadAt from localStorage (persisted across reloads)
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('kanban_chat_read') : null;
+    const readMap: Record<string, string> = stored ? JSON.parse(stored) : {};
+    return [
+      { id: 'global', type: 'global', chatName: 'Chat da Equipe', draft: '', isOpen: false, isMinimized: false, lastReadAt: readMap['global'] }
+    ];
+  });
 
   // Busca inicial dos dados
   const fetchData = useCallback(async () => {
-    // Buscar tarefas
-    const { data: tasksData } = await supabase
+    // Regras de visibilidade:
+    //   - 'user'   -> apenas suas próprias tarefas
+    //   - 'gestor' -> tarefas de usuários do mesmo setor (area)
+    //   - 'master' / 'admin' -> todas as tarefas
+    const tasksQuery = supabase
       .from('tasks')
       .select('*')
       .order('created_at', { ascending: false });
+
+    if (currentUser?.role === 'user') {
+      tasksQuery.eq('creator_id', currentUser.id);
+    }
+
+    const { data: tasksData } = await tasksQuery;
 
     // Buscar comentarios
     const { data: commentsData } = await supabase
@@ -75,7 +89,7 @@ export function KanbanProvider({ children }: { children: ReactNode }) {
 
     if (tasksData) {
       // Montar tasks com creator e comments com user
-      const builtTasks = tasksData.map(t => {
+      let builtTasks = tasksData.map(t => {
         const creator = availableUsers.find(u => u.id === t.creator_id);
         const taskComments = (commentsData || [])
           .filter(c => c.task_id === t.id)
@@ -91,6 +105,16 @@ export function KanbanProvider({ children }: { children: ReactNode }) {
           attachments: [] // Simplificando por enquanto
         };
       });
+
+      // Filtro de visibilidade p/ gestor: apenas tarefas do mesmo setor
+      if (currentUser?.role === 'gestor' && currentUser.area) {
+        builtTasks = builtTasks.filter(t => {
+          const creatorUser = availableUsers.find(u => u.id === t.creator_id);
+          // Gestor vê as próprias tarefas + tarefas de usuários do mesmo setor
+          return t.creator_id === currentUser.id || creatorUser?.area === currentUser.area;
+        });
+      }
+
       setTasks(builtTasks as Task[]);
     }
 
@@ -105,7 +129,7 @@ export function KanbanProvider({ children }: { children: ReactNode }) {
       }));
       setChatMessages(builtMessages);
     }
-  }, [supabase, availableUsers]);
+  }, [supabase, availableUsers, currentUser]);
 
   useEffect(() => {
     // Só buscar tarefas e mensagens quando a lista de usuários estiver pronta
@@ -145,12 +169,25 @@ export function KanbanProvider({ children }: { children: ReactNode }) {
   );
 
   const openChatTab = useCallback((tabId: string, type: 'global' | 'dm', chatName: string) => {
+    const now = new Date().toISOString();
+    
+    // Persist lastReadAt to localStorage so it survives page reloads
+    try {
+      const stored = localStorage.getItem('kanban_chat_read');
+      const readMap: Record<string, string> = stored ? JSON.parse(stored) : {};
+      readMap[tabId] = now;
+      localStorage.setItem('kanban_chat_read', JSON.stringify(readMap));
+    } catch (e) { /* ignore */ }
+
     setChatTabs((prev) => {
       const existing = prev.find((t) => t.id === tabId);
       if (existing) {
-        return prev.map((t) => (t.id === tabId ? { ...t, isOpen: true, isMinimized: false } : t));
+        return prev.map((t) => (t.id === tabId ? { ...t, isOpen: true, isMinimized: false, lastReadAt: now } : t));
       }
-      return [...prev, { id: tabId, type, chatName, draft: '', isOpen: true, isMinimized: false }];
+      // Restore possible persisted lastReadAt for new DM tabs too
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('kanban_chat_read') : null;
+      const readMap: Record<string, string> = stored ? JSON.parse(stored) : {};
+      return [...prev, { id: tabId, type, chatName, draft: '', isOpen: true, isMinimized: false, lastReadAt: readMap[tabId] || now }];
     });
   }, []);
 

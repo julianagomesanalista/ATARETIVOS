@@ -1,18 +1,45 @@
 "use client";
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { MessageSquarePlus, X, Globe2 } from 'lucide-react';
 import { useKanban } from '@/context/KanbanContext';
 import { useAuth } from '@/context/AuthContext';
 import FloatingChat from './FloatingChat';
-import { mockUsers } from '@/data/mockData';
 
 export default function FloatingChatContainer() {
-  const { chatTabs, openChatTab } = useKanban();
-  const { currentUser } = useAuth();
+  const { chatTabs, openChatTab, chatMessages } = useKanban();
+  const { currentUser, availableUsers } = useAuth();
   const [showUserList, setShowUserList] = useState(false);
 
   // Exclude current user from the DM list
-  const dmUsers = mockUsers.filter(u => u.id !== currentUser?.id);
+  const dmUsers = availableUsers.filter(u => u.id !== currentUser?.id);
+
+  // Read the persisted lastReadAt map from localStorage once
+  const readMap: Record<string, string> = useMemo(() => {
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('kanban_chat_read') : null;
+      return stored ? JSON.parse(stored) : {};
+    } catch { return {}; }
+  }, []);
+
+  // Helper: get lastReadAt for a tab — prefers in-memory state, falls back to localStorage
+  const getLastReadAt = (tabId: string): string | undefined => {
+    const tab = chatTabs.find(t => t.id === tabId);
+    return tab?.lastReadAt ?? readMap[tabId];
+  };
+
+  // Count unread DM messages: messages received AFTER lastReadAt (state or localStorage)
+  const unreadCount = useMemo(() => {
+    if (!currentUser) return 0;
+
+    return chatMessages.filter(m => {
+      if (m.receiver_id !== currentUser.id) return false;
+      if (m.sender_id === currentUser.id) return false;
+      const lastRead = getLastReadAt(m.sender_id);
+      if (!lastRead) return true; // never opened = unread
+      return new Date(m.created_at) > new Date(lastRead);
+    }).length;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatMessages, chatTabs, currentUser, readMap]);
 
   const handleOpenGlobal = () => {
     openChatTab('global', 'global', 'Chat da Equipe');
@@ -45,6 +72,13 @@ export default function FloatingChatContainer() {
           {showUserList ? <X className="w-6 h-6" /> : <MessageSquarePlus className="w-6 h-6 ml-0.5" />}
         </button>
 
+        {/* Unread Badge */}
+        {!showUserList && unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 shadow-lg animate-bounce">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
+
         {/* User Selection Popover */}
         {showUserList && (
           <div className="absolute bottom-6 right-20 w-72 bg-slate-900 border border-slate-700/60 rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-right-2 fade-in duration-200">
@@ -73,20 +107,38 @@ export default function FloatingChatContainer() {
               </div>
 
               {/* Specific Users */}
-              {dmUsers.map((u) => (
-                <button
-                  key={u.id}
-                  onClick={() => handleOpenDM(u.id, u.full_name)}
-                  className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-slate-800 transition-colors text-left"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={u.avatar_url || `https://ui-avatars.com/api/?name=${u.full_name}&background=random`} alt={u.full_name} className="w-10 h-10 rounded-full object-cover border border-slate-700" />
-                  <div>
-                    <h5 className="text-[13px] font-bold text-slate-200">{u.full_name}</h5>
-                    <p className="text-[10px] text-slate-500">{u.area || u.role}</p>
-                  </div>
-                </button>
-              ))}
+              {dmUsers.map((u) => {
+                // Count unread messages from this specific user using lastReadAt (state + localStorage fallback)
+                const userUnread = chatMessages.filter(m => {
+                  if (m.sender_id !== u.id) return false;
+                  if (m.receiver_id !== currentUser?.id) return false;
+                  const lastRead = getLastReadAt(u.id);
+                  if (!lastRead) return true; // never opened = unread
+                  return new Date(m.created_at) > new Date(lastRead);
+                }).length;
+
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => handleOpenDM(u.id, u.full_name)}
+                    className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-slate-800 transition-colors text-left"
+                  >
+                    <div className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={u.avatar_url || `https://ui-avatars.com/api/?name=${u.full_name}&background=random`} alt={u.full_name} className="w-10 h-10 rounded-full object-cover border border-slate-700" />
+                      {userUnread > 0 && (
+                        <span className="absolute -top-1 -right-1 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-1">
+                          {userUnread}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <h5 className="text-[13px] font-bold text-slate-200">{u.full_name}</h5>
+                      <p className="text-[10px] text-slate-500">{u.area || u.role}</p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}

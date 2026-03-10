@@ -38,9 +38,13 @@ export default function IdeasPanel() {
 
       if (commentsErr) throw commentsErr;
 
+      const allUsers = currentUser
+        ? [...availableUsers.filter(u => u.id !== currentUser.id), currentUser]
+        : availableUsers;
+
       const mappedIdeas = (ideasData || []).map(i => ({
         ...i,
-        creator: availableUsers.find(u => u.id === i.creator_id)
+        creator: allUsers.find(u => u.id === i.creator_id)
       }));
       setIdeas(mappedIdeas);
 
@@ -49,7 +53,7 @@ export default function IdeasPanel() {
         if (!groupedComments[c.idea_id]) groupedComments[c.idea_id] = [];
         groupedComments[c.idea_id].push({
           ...c,
-          user: availableUsers.find(u => u.id === c.user_id)
+          user: allUsers.find(u => u.id === c.user_id)
         });
       });
       setComments(groupedComments);
@@ -59,7 +63,7 @@ export default function IdeasPanel() {
     } finally {
       setLoading(false);
     }
-  }, [availableUsers, supabase]);
+  }, [availableUsers, supabase, currentUser]);
 
   useEffect(() => {
     loadData();

@@ -4,20 +4,21 @@ import {
   PieChart, Pie, Cell,
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { mockTasks } from '@/data/mockData';
 import { useAuth } from '@/context/AuthContext';
+import { useKanban } from '@/context/KanbanContext';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { User } from '@/types';
+import { User, Task } from '@/types';
 
 // ── Paleta de cores para as barras de carga ───────────────────────────────────
 const BAR_COLORS = ['#64748b', '#f97316', '#ef4444', '#3b82f6', '#8b5cf6', '#10b981', '#ec4899', '#14b8a6'];
 
 // ── Sub-componente: Painel de Carga / Ranking ─────────────────────────────────
-function WorkloadPanel({ users, title, subtitle }: { users: User[]; title: string; subtitle?: string }) {
+function WorkloadPanel({ users, tasks, title, subtitle }: { users: User[]; tasks: Task[]; title: string; subtitle?: string }) {
   const stats = useMemo(() => {
     const raw = users.map((u) => {
-      const userTasks = mockTasks.filter((t) => t.assignee?.id === u.id);
+      // Use creator_id as the task owner (since assignee is not populated)
+      const userTasks = tasks.filter((t) => t.creator_id === u.id);
       const done  = userTasks.filter((t) => t.status === 'done').length;
       const doing = userTasks.filter((t) => t.status === 'doing').length;
       const todo  = userTasks.filter((t) => t.status === 'todo').length;
@@ -31,7 +32,7 @@ function WorkloadPanel({ users, title, subtitle }: { users: User[]; title: strin
         color: BAR_COLORS[i % BAR_COLORS.length],
       }))
       .sort((a, b) => b.total - a.total);
-  }, [users]);
+  }, [users, tasks]);
 
   return (
     <div className="bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-xl p-6 flex flex-col">
@@ -84,12 +85,12 @@ function WorkloadPanel({ users, title, subtitle }: { users: User[]; title: strin
 }
 
 // ── Sub-componente: Histórico de Atividades (para usuários comuns) ─────────────
-function ActivityHistory({ userId }: { userId: string }) {
+function ActivityHistory({ userId, tasks }: { userId: string; tasks: Task[] }) {
   const myTasks = useMemo(() => {
-    return mockTasks
-      .filter((t) => t.assignee?.id === userId || t.creator_id === userId)
+    return tasks
+      .filter((t) => t.creator_id === userId)
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [userId]);
+  }, [userId, tasks]);
 
   const statusInfo = (s: string) => {
     if (s === 'done')  return { label: 'Concluída',    dot: 'bg-emerald-400', badge: 'text-emerald-400 bg-emerald-400/10' };
@@ -137,6 +138,7 @@ function ActivityHistory({ userId }: { userId: string }) {
 // ── Componente Principal ──────────────────────────────────────────────────────
 export default function ReportsPanel() {
   const { currentUser, availableUsers } = useAuth();
+  const { tasks } = useKanban();
 
   const role = currentUser?.role ?? 'user';
   const isAdminOrMaster = role === 'admin' || role === 'master';
@@ -145,24 +147,25 @@ export default function ReportsPanel() {
 
   // Donut de status — para gestor, filtrado pela área dele
   const statusData = useMemo(() => {
-    let tasks = mockTasks;
+    let currentTasks = tasks;
     if (isGestor && currentUser?.area) {
       const areaIds = availableUsers.filter((u) => u.area === currentUser.area).map((u) => u.id);
-      tasks = mockTasks.filter((t) => t.assignee && areaIds.includes(t.assignee.id));
+      currentTasks = tasks.filter((t) => areaIds.includes(t.creator_id));
     }
     return [
-      { name: 'Feito',        value: tasks.filter((t) => t.status === 'done').length,  color: '#10b981' },
-      { name: 'Em andamento', value: tasks.filter((t) => t.status === 'doing').length, color: '#f59e0b' },
-      { name: 'Parado',       value: tasks.filter((t) => t.status === 'todo').length,  color: '#ef4444' },
+      { name: 'Feito',        value: currentTasks.filter((t) => t.status === 'done').length,  color: '#10b981' },
+      { name: 'Em andamento', value: currentTasks.filter((t) => t.status === 'doing').length, color: '#f59e0b' },
+      { name: 'Parado',       value: currentTasks.filter((t) => t.status === 'todo').length,  color: '#ef4444' },
     ];
-  }, [isGestor, currentUser, availableUsers]);
+  }, [isGestor, currentUser, availableUsers, tasks]);
 
   // Gráfico de barras (Produtividade por Área) — para admin/master
   const areaStats = useMemo(() => {
     const areas = ['Comercial', 'Tecnologia', 'Jurídico', 'Hunters', 'Marketing'];
     return areas.map((area) => {
       const uids = availableUsers.filter((u) => u.area === area).map((u) => u.id);
-      const aT   = mockTasks.filter((t) => t.assignee && uids.includes(t.assignee.id));
+      // Use creator_id as task owner
+      const aT   = tasks.filter((t) => uids.includes(t.creator_id));
       return {
         name: area,
         'Feito':        aT.filter((t) => t.status === 'done').length,
@@ -170,7 +173,7 @@ export default function ReportsPanel() {
         'A Fazer':      aT.filter((t) => t.status === 'todo').length,
       };
     });
-  }, [availableUsers]);
+  }, [availableUsers, tasks]);
 
   // Usuários da área do gestor (para o painel de carga)
   const gestorAreaUsers = useMemo(() => {
@@ -181,16 +184,14 @@ export default function ReportsPanel() {
   // Tarefas visíveis na tabela Sprint (filtradas por role)
   const sprintTasks = useMemo(() => {
     if (isUser) {
-      return mockTasks.filter(
-        (t) => t.assignee?.id === currentUser?.id || t.creator_id === currentUser?.id
-      );
+      return tasks.filter((t) => t.creator_id === currentUser?.id);
     }
     if (isGestor && currentUser?.area) {
       const areaIds = availableUsers.filter((u) => u.area === currentUser.area).map((u) => u.id);
-      return mockTasks.filter((t) => t.assignee && areaIds.includes(t.assignee.id));
+      return tasks.filter((t) => areaIds.includes(t.creator_id));
     }
-    return mockTasks;
-  }, [isUser, isGestor, currentUser, availableUsers]);
+    return tasks;
+  }, [isUser, isGestor, currentUser, availableUsers, tasks]);
 
   const hasCustomBg = !!currentUser?.background_url;
 
@@ -246,6 +247,7 @@ export default function ReportsPanel() {
             {/* Carga de trabalho da equipe */}
             <WorkloadPanel
               users={gestorAreaUsers}
+              tasks={tasks}
               title="Carga de trabalho da equipe"
               subtitle={`Gerenciar capacidade da equipe — ${currentUser?.area ?? 'Sua área'}`}
             />
@@ -289,6 +291,7 @@ export default function ReportsPanel() {
             {/* Ranking de Usuários */}
             <WorkloadPanel
               users={availableUsers}
+              tasks={tasks}
               title="Ranking de Usuários"
               subtitle="Distribuição geral de carga de trabalho por colaborador"
             />
@@ -297,7 +300,7 @@ export default function ReportsPanel() {
 
         {/* ─── USUÁRIO COMUM: Histórico de Atividades ─── */}
         {isUser && currentUser && (
-          <ActivityHistory userId={currentUser.id} />
+          <ActivityHistory userId={currentUser.id} tasks={tasks} />
         )}
       </div>
 

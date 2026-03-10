@@ -77,6 +77,7 @@ export interface ChatTabState {
   draftMention?: { taskId: string; title: string };
   isOpen: boolean;
   isMinimized: boolean;
+  lastReadAt?: string; // ISO timestamp of when the tab was last opened/focused
 }
 
 // ─── UI helpers ───────────────────────────────────────────────────────────────

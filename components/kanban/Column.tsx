@@ -16,10 +16,10 @@ export default function Column({ column }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
 
   return (
-    <div className="flex flex-col w-72 shrink-0">
+    <div className="flex flex-col w-72 shrink-0 h-full">
       {/* Column header */}
       <div
-        className="flex items-center justify-between px-4 py-3 rounded-t-xl"
+        className="flex items-center justify-between px-4 py-3 rounded-t-xl shrink-0"
         style={{ backgroundColor: column.headerColor }}
       >
         <div className="flex items-center gap-2">
@@ -37,30 +37,38 @@ export default function Column({ column }: ColumnProps) {
         </button>
       </div>
 
-      {/* Drop zone */}
+      {/* Drop zone - full height relative container */}
       <div
-        ref={setNodeRef}
-        className={`flex-1 rounded-b-xl p-3 transition-colors overflow-y-auto scrollbar-thin min-h-[400px] border-x border-b border-white/10 ${
-          isOver ? 'bg-black/40 backdrop-blur-md' : 'bg-transparent'
-        }`}
+        className="relative flex-1 rounded-b-xl border-x border-b border-white/10"
       >
-        <SortableContext
-          items={column.tasks.map((t) => t.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          <div className="space-y-3">
-            {column.tasks.map((task) => (
-              <TaskCard key={task.id} task={task} />
-            ))}
-          </div>
-        </SortableContext>
+        {/* Invisible absolute droppable overlay covering the full column height */}
+        <div
+          ref={setNodeRef}
+          className={`absolute inset-0 rounded-b-xl transition-colors ${
+            isOver ? 'bg-black/40 backdrop-blur-md' : ''
+          }`}
+        />
 
-        {column.tasks.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 text-slate-500">
-            <span className="text-3xl mb-2">¦</span>
-            <p className="text-xs">Arraste um card aqui</p>
-          </div>
-        )}
+        {/* Scrollable card list rendered above the droppable overlay */}
+        <div className="relative z-10 h-full overflow-y-auto scrollbar-thin p-3">
+          <SortableContext
+            items={column.tasks.map((t) => t.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-3">
+              {column.tasks.map((task) => (
+                <TaskCard key={task.id} task={task} />
+              ))}
+            </div>
+          </SortableContext>
+
+          {column.tasks.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-slate-500">
+              <span className="text-3xl mb-2">⬦</span>
+              <p className="text-xs">Arraste um card aqui</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
